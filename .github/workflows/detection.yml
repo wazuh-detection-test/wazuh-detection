@@ -18,7 +18,8 @@ jobs:
 
       - name: Install Wazuh Agent
         run: |
-          curl -sO https://packages.wazuh.com/4.x/wazuh-install.sh && sudo bash wazuh-install.sh --agent
+          curl -sSLO https://packages.wazuh.com/4.x/wazuh-agent.deb
+          sudo dpkg -i wazuh-agent.deb || sudo apt-get install -f -y
 
       - name: Configure Wazuh Agent
         run: |
