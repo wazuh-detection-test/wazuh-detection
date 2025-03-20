@@ -1,6 +1,7 @@
+# GitHub Actions workflow for testing Wazuh SSH Brute-Force detection.
 name: Wazuh SSH Brute-Force Detection
 
-on:
+on: 
   push:
   pull_request:
 
@@ -12,42 +13,52 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y curl gnupg ssh jq
-
       - name: Install Wazuh Agent
         run: |
+          sudo apt-get update && sudo apt-get install -y curl gnupg ssh jq
           curl -sSLO https://packages.wazuh.com/4.x/wazuh-agent.deb
           sudo dpkg -i wazuh-agent.deb || sudo apt-get install -f -y
 
-      - name: Configure Wazuh Agent
+      - name: Verify Wazuh Agent Installation
         run: |
+          if [ ! -f /var/ossec/bin/wazuh-control ]; then
+            echo "❌ Wazuh Agent installation failed!" && exit 1
+          fi
+          echo "✅ Wazuh Agent installed successfully."
+
+      - name: Configure and Start Wazuh Agent
+        run: |
+          sudo systemctl daemon-reload
           sudo systemctl enable wazuh-agent
-          sudo systemctl restart wazuh-agent
-          sleep 10
-          sudo systemctl status wazuh-agent --no-pager || (echo "❌ Wazuh Agent failed to start" && exit 1)
+          sudo systemctl start wazuh-agent
+          sudo systemctl status wazuh-agent --no-pager || exit 1
 
       - name: Simulate SSH Brute-Force Attack
         run: |
-          sudo bash -c 'echo "$(date "+%b %d %H:%M:%S") myserver sshd[1234]: Failed password for invalid user root from 192.168.1.200 port 22" >> /var/log/auth.log'
-          sudo bash -c 'echo "$(date "+%b %d %H:%M:%S") myserver sshd[1235]: Failed password for invalid user admin from 192.168.1.200 port 22" >> /var/log/auth.log'
-          sudo bash -c 'echo "$(date "+%b %d %H:%M:%S") myserver sshd[1236]: Failed password for invalid user test from 192.168.1.200 port 22" >> /var/log/auth.log'
+          echo "🚨 Simulating SSH Brute-Force Attack..."
+          sudo bash -c 'echo "Mar 20 12:00:01 myserver sshd[1234]: Failed password for invalid user root from 192.168.1.200 port 22" >> /var/log/auth.log'
+          sudo bash -c 'echo "Mar 20 12:00:02 myserver sshd[1235]: Failed password for invalid user admin from 192.168.1.200 port 22" >> /var/log/auth.log'
+          sudo bash -c 'echo "Mar 20 12:00:03 myserver sshd[1236]: Failed password for invalid user test from 192.168.1.200 port 22" >> /var/log/auth.log'
+          echo "✅ Fake SSH brute-force logs added."
 
       - name: Wait for Wazuh to Process Logs
         run: sleep 15
 
       - name: Verify Detection in Wazuh Alerts
         run: |
+          echo "🔍 Checking Wazuh alerts for SSH brute-force detection..."
           sudo cat /var/ossec/logs/alerts/alerts.json | grep '100100' || echo "❌ No alert found!"
 
       - name: Check if IP was Blocked
         run: |
+          echo "🔒 Checking if attacker IP is blocked..."
           sudo iptables -L -n | grep '192.168.1.200' || echo "❌ IP not blocked!"
 
       - name: Send Slack Notification on Detection
         if: success()
         run: |
+          echo "🚀 Sending Slack Notification..."
           curl -X POST -H 'Content-type: application/json' \
-          --data '{"text": "🚨 *Wazuh Alert:* SSH Brute-force attack detected!\n🔍 Attacker IP: 192.168.1.200\n🔒 Status: Blocked by Wazuh"}' \
-          ${{ secrets.SLACK_WEBHOOK_URL }}
+          --data '{
+            "text": "🚨 *Wazuh Alert:* SSH Brute-force attack detected!\n🔍 Attacker IP: 192.168.1.200\n🔒 Status: Blocked by Wazuh"
+          }' ${{ secrets.SLACK_WEBHOOK_URL }}
