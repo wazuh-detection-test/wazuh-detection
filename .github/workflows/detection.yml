@@ -17,11 +17,11 @@ jobs:
       # Step 2: Install Wazuh Agent and dependencies
       - name: Install Wazuh Agent
         run: |
-          apt-get update && apt-get install -y curl gnupg ssh jq
+          sudo apt-get update && apt-get install -y curl gnupg ssh jq
           curl -sO https://packages.wazuh.com/key/GPG-KEY-WAZUH
-          apt-key add GPG-KEY-WAZUH
+          sudo apt-key add GPG-KEY-WAZUH
           echo "deb https://packages.wazuh.com/4.x/apt/ stable main" | tee /etc/apt/sources.list.d/wazuh.list
-          apt-get update && apt-get install -y wazuh-agent
+          sudo apt-get update && apt-get install -y wazuh-agent
 
       # Step 3: Enable and start Wazuh Agent
       - name: Configure Wazuh Agent
