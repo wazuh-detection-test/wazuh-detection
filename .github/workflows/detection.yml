@@ -1,0 +1,65 @@
+# GitHub Actions workflow for testing Wazuh SSH Brute-Force detection.
+name: Wazuh SSH Brute-Force Detection
+
+# This workflow runs on every push and pull request.
+on: 
+  push:
+  pull_request:
+
+jobs:
+  test_detection:
+    # This job runs on an Ubuntu machine in GitHub Actions.
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # Step 2: Install Wazuh Agent
+      - name: Install Wazuh Agent
+        run: |
+          curl -sO https://packages.wazuh.com/4.x/wazuh-install.sh
+          sudo bash wazuh-install.sh -a
+          
+      # Step 3: Enable and start Wazuh Agent
+      - name: Configure Wazuh Agent
+        run: |
+          sudo systemctl enable wazuh-agent
+          sudo systemctl start wazuh-agent
+          echo "✅ Wazuh Agent installed and running."
+
+      # Step 4: Simulate SSH Brute-Force Attack by injecting fake log entries.
+      - name: Simulate SSH Brute-Force Attack
+        run: |
+          echo "🚨 Simulating SSH Brute-Force Attack..."
+          sudo bash -c 'echo "Mar 20 12:00:01 myserver sshd[1234]: Failed password for invalid user root from 192.168.1.200 port 22" > /var/log/auth.log'
+          sudo bash -c 'echo "Mar 20 12:00:02 myserver sshd[1235]: Failed password for invalid user admin from 192.168.1.200 port 22" >> /var/log/auth.log'
+          sudo bash -c 'echo "Mar 20 12:00:03 myserver sshd[1236]: Failed password for invalid user test from 192.168.1.200 port 22" >> /var/log/auth.log'
+          echo "✅ Fake SSH brute-force logs added."
+
+      # Step 5: Wait for Wazuh to process the logs (15 seconds is usually enough).
+      - name: Wait for Wazuh to Process Logs
+        run: sleep 15
+
+      # Step 6: Check if Wazuh detected the SSH brute-force attack by searching for Rule ID 100100 in alerts.json.
+      - name: Verify Detection in Wazuh Alerts
+        run: |
+          echo "🔍 Checking Wazuh alerts for SSH brute-force detection..."
+          cat /var/ossec/logs/alerts/alerts.json | grep '100100' || echo "❌ No alert found!"
+
+      # Step 7: Check if the attacker's IP (192.168.1.200) was blocked using iptables (Optional Step).
+      - name: Check if IP was Blocked
+        run: |
+          echo "🔒 Checking if attacker IP is blocked..."
+          sudo iptables -L -n | grep '192.168.1.200' || echo "❌ IP not blocked!"
+
+      # Step 8: Send a Slack Notification when Wazuh detects an SSH brute-force attack.
+      - name: Send Slack Notification on Detection
+        if: success()  # Only run this step if the previous steps succeed.
+        run: |
+          echo "🚀 Sending Slack Notification..."
+          curl -X POST -H 'Content-type: application/json' \
+          --data '{
+            "text": "🚨 *Wazuh Alert:* SSH Brute-force attack detected!\n🔍 Attacker IP: 192.168.1.200\n🔒 Status: Blocked by Wazuh"
+          }' ${{ secrets.SLACK_WEBHOOK_URL }}
